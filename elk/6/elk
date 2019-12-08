@@ -1,0 +1,37 @@
+yum install java-1.8.0-openjdk -y
+rpm --import https://artifacts.elastic.co/GPG-KEY-elasticsearch
+
+vi /etc/yum.repos.d/elastic.repo
+[elastic-6.x]
+name=Elastic repository for 6.x packages
+baseurl=https://artifacts.elastic.co/packages/6.x/yum
+gpgcheck=1
+gpgkey=https://artifacts.elastic.co/GPG-KEY-elasticsearch
+enabled=1
+autorefresh=1
+type=rpm-md
+
+vi /etc/elasticsearch/elasticsearch.yml
+cluster.name: elk-cluster
+node.name: node-1
+path.data: /var/lib/elasticsearch
+path.logs: /var/log/elasticsearch
+network.host: 192.168.1.196
+http.port: 9200
+discovery.zen.ping.unicast.hosts: ["192.168.1.195", "192.168.1.196", "192.168.1.197"]
+discovery.zen.minimum_master_nodes: 2
+
+head插件
+wget https://npm.taobao.org/mirrors/node/latest-v4.x/node-v4.4.7-linux-x64.tar.gz
+tar -zxvf node-v4.4.7-linux-x64.tar.gz
+# vi /etc/profile
+NODE_HOME=/usr/local/node-v4.4
+PATH=$NODE_HOME/bin:$PATH
+export NODE_HOME PATH
+# source /etc/profile
+# git clone git://github.com/mobz/elasticsearch-head.git
+cd elasticsearch-head
+npm install
+npm run start
+
+

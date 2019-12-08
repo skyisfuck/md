@@ -1,0 +1,22 @@
+https://github.com/vegasbrianc/prometheus/
+
+
+1、需要docker swarm 环境
+2、  HOSTNAME=$(hostname) docker stack deploy -c docker-stack.yml prom
+
+3、通过http://<Host IP Address>:3000
+
+username - admin
+password - foobar (Password is stored in the `/grafana/config.monitoring` env file)
+
+
+
+
+
+
+启动后还有报错的话如下解决：
+[root@master ~]# docker logs cadvisor
+W0424 02:23:46.543998       1 manager.go:349] Could not configure a source for OOM detection, disabling OOM events: open /dev/kmsg: no such file or d
+irectoryF0424 02:23:46.571058       1 cadvisor.go:172] Failed to start container manager: inotify_add_watch /sys/fs/cgroup/cpuacct,cpu: no such file or direc
+tory[root@master ~]# mount -o remount,rw '/sys/fs/cgroup'
+[root@master ~]# ln -s /sys/fs/cgroup/cpu,cpuacct /sys/fs/cgroup/cpuacct,cpu

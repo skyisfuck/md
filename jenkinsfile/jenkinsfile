@@ -1,0 +1,86 @@
+#!groovy
+pipeline {
+  agent {node("master")}
+  environment{
+  PATH="/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/root/jdk1.8/bin"
+}
+parameters{
+ choice(
+ choices:'dev\nprod',
+ description:'choose deploy environment',
+ name:'deploy_env'
+)
+ string (name: 'version',defaultValue: '1.0.0',description:'build version')
+}
+ 
+stages{
+    stage("valid"){
+      steps{
+         dir('env'){
+        echo "...done"
+         }
+         }
+    }
+   stage("checkout"){
+      steps{
+         dir('env'){
+           cleanWs()
+          checkout([$class: 'GitSCM', branches: [[name: '*/master']], doGenerateSubmoduleConfigurations: false, extensions: [], submoduleCfg: [], userRemoteConfigs: [[credentialsId: 'github', url: 'https://github.com/zhengxh247/demo1.git']]])
+        }
+          }
+    }
+    stage("build maven"){
+     steps{
+      script{
+        def mvnhome = '/root/maven/apache-maven-3.6.1'
+         dir('env'){
+            sh "$mvnhome/bin/mvn -Dmaven.test.skip=true clean install"
+          }
+          }
+          }
+    }
+     stage("build dockerfile"){
+         steps{
+        dir('env/target'){
+        sh """
+        echo "FROM java:8" >>Dockerfile
+        echo "VOLUME /tmp">>Dockerfile
+        echo "ADD demotest.jar app.jar">>Dockerfile
+        echo 'ENTRYPOINT ["java","-jar","app.jar"]'>>Dockerfile
+         """
+        }
+        }
+       }
+     stage("build docker image"){
+         steps{
+        dir('env/target'){
+        sh """
+        echo ".."
+        """
+        script {
+                        def image = docker.build('demotest')
+               }
+        }
+        }
+       }
+     stage("deploy"){
+         steps{
+              dir('env/target'){
+              script {
+                   docker.image('demotest').run('--name demotest -p 8088:8080 -t demotest demotest')
+              }
+       }
+         }
+     }
+     
+     stage("clean environment"){
+         steps{
+        dir('env'){
+        sh """
+        echo ".."
+        """
+        }
+        }
+      }
+      }
+ }

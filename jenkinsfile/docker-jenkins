@@ -1,0 +1,63 @@
+#!groovy
+pipeline {
+  agent {node("docker-192.168.4.133")}
+  environment{
+  PATH="/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/root/jdk1.8/bin"
+}
+parameters{
+ choice(
+ choices:'dev\nprod',
+ description:'choose deploy environment',
+ name:'deploy_env'
+)
+ string (name: 'version',defaultValue: '1.0.0',description:'build version')
+}
+ 
+stages{
+    stage("valid"){
+       steps{
+         dir('env'){
+        echo "...done"
+         }
+         }
+    }
+     stage("build dockerfile"){
+         steps{
+        dir('env/target'){
+        sh """
+		echo "myapp version is ${version}">index.jsp
+        echo "FROM tomcat:alpine" >>Dockerfile
+		echo "ENV TZ=Asia/Shanghai" >>Dockerfile
+        echo "ADD index.jsp /usr/local/tomcat/webapps/ROOT">>Dockerfile
+		docker build -t myapp:${version} .
+		docker image ls | grep "^myapp.*latest" && docker image rm -f myapp:latest
+		docker tag myapp:${version} myapp:latest
+         """
+        }
+        }
+       }
+    
+     stage("deploy"){
+         steps{
+              dir('env/target'){
+              script {
+                   sh '''
+				   docker container ls | awk '/0.0.0.0:8080/{print \$1}' && docker container rm -f $(docker container ls | awk '/0.0.0.0:8080/{print \$1}')
+				   docker run -d --name myapp -p 8080:8080 myapp:latest
+				   '''
+              }
+			}
+         }
+     }
+     
+     stage("clean environment"){
+         steps{
+        dir('env'){
+        sh """
+        echo ".."
+        """
+        }
+        }
+      }
+      }
+ }

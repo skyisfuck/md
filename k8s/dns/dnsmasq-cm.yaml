@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dnsmasq-configmap
+data:
+  dnsmasq.conf: |
+    resolv-file=/etc/dnsmasq.d/resolv.dnsmasq
+    addn-hosts=/etc/dnsmasq.d/dnsmasqhosts
+    ## 下面一句是把ning.com指给192.168.100.110,就是ingress-server的ip
+    address=/ning.com/192.168.100.110
+  dnsmasqhosts: |
+    #下面是指具体ip的
+    192.168.100.110 *.ning.com
+  resolv.dnsmasq: |
+    nameserver 114.114.114.114
+    nameserver 8.8.8.8

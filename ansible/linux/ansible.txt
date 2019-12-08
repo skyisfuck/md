@@ -1,0 +1,21 @@
+[windows]
+192.168.5.152
+#  ansible_ssh_user="Administrator" ansible_ssh_pass="`1q" ansible_ssh_port=5986 ansible_con
+nection="winrm" ansible_winrm_server_cert_validation=ignore
+[windows:vars]
+ansible_user="Administrator"
+ansible_password="`1q"
+ansible_port=5986
+ansible_connection="winrm"
+ansible_winrm_server_cert_validation=ignore
+
+
+5986为https加密端口 
+5985为http
+若要用5985，则客户端需要设置
+winrm set winrm/config/service '@{AllowUnencrypted="true"}'
+
+ansible返回中文乱码，在服务端修改
+
+sed -i "s#tdout_buffer.append(stdout)#tdout_buffer.append(stdout.decode('gbk').encode('utf-8'))#g" /usr/lib/python2.7/site-packages/winrm/protocol.py
+sed -i "s#stderr_buffer.append(stderr)#stderr_buffer.append(stderr.decode('gbk').encode('utf-8'))#g" /usr/lib/python2.7/site-packages/winrm/protocol.py

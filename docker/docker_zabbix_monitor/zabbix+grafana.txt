@@ -1,0 +1,58 @@
+## 不推荐容器环境下使用zabbix进行监控，因为zabbix只能收集zabbix_agent能访问的区域，如果zabbix_agent是以容器的方式运行在宿主机上，则zabbix_agent能访问什么资源，zabbix server就只能收集到什么资源
+## 因为宿主机安装了mysql 并监听了3306端口，因此这里的mysql监听3307端口
+docker run --name mysql-server \
+           --network=host \
+	   -v /usr/share/zoneinfo/Asia/Shanghai:/etc/localtime:ro \
+	   -e MYSQL_DATABASE="zabbix" \
+	   -e MYSQL_USER="zabbix" \
+	   -e MYSQL_TCP_PORT=3307 \
+	   -e MYSQL_PASSWORD="zabbix_pwd" \
+	   -e MYSQL_ROOT_PASSWORD="root_pwd" \
+	   -v /data/zabbix/mysql:/var/lib/mysql \
+	   -d mysql:5.7
+
+docker run --name zabbix-server-mysql \
+           --network=host \
+	   -v /usr/share/zoneinfo/Asia/Shanghai:/etc/localtime:ro \
+	   -e DB_SERVER_HOST="127.0.0.1" \
+	   -e DB_SERVER_PORT=3307 \
+	   -e MYSQL_DATABASE="zabbix" \
+	   -e MYSQL_USER="zabbix" \
+	   -e MYSQL_PASSWORD="zabbix_pwd" \
+	   -e MYSQL_ROOT_PASSWORD="root_pwd" \
+	   -e ZBX_STARTDISCOVERERS=5 \
+	   -e ZBX_STARTPOLLERS=14 \
+	   -d zabbix/zabbix-server-mysql:latest
+		
+docker run --name zabbix-web-nginx-mysql \
+           --network=host \
+	   -v /usr/share/zoneinfo/Asia/Shanghai:/etc/localtime:ro \
+	   -e DB_SERVER_HOST="127.0.0.1" \
+	   -e ZBX_SERVER_HOST="127.0.0.1" \
+	   -e DB_SERVER_PORT="3307" \
+	   -e MYSQL_DATABASE="zabbix" \
+	   -e PHP_TZ="Asia/Shanghai" \
+	   -e MYSQL_USER="zabbix" \
+	   -e MYSQL_PASSWORD="zabbix_pwd" \
+	   -e MYSQL_ROOT_PASSWORD="root_pwd" \
+	   -d zabbix/zabbix-web-nginx-mysql 
+
+
+docker run --name zabbix-agent \
+           --privileged \
+	   -v /usr/share/zoneinfo/Asia/Shanghai:/etc/localtime:ro \
+	   --network=host \
+	   --pid=host \
+	   -e ZBX_HOSTNAME="147.33.104.20" \
+	   -e ZBX_SERVER_HOST="147.33.104.18" \
+	   -e ZBX_METADATA="linux-agent" \
+	   -d zabbix/zabbix-agent:latest
+
+# -v 挂载 需要将宿主机上的/data/zabbix/grafana目录设置属主为grafana用户，因为grafana容器是以grafana用户启动的 chown 472 /data/zabbix/grafana -R
+docker run --name grafana \
+           -v /usr/share/zoneinfo/Asia/Shanghai:/etc/localtime:ro \
+           -p 3000:3000 \
+	   -e "GF_INSTALL_PLUGINS=alexanderzobnin-zabbix-app" \
+	   -v /data/zabbix/grafana:/var/lib/grafana \
+	   -d grafana/grafana:latest
+		   

@@ -1,0 +1,200 @@
+
+
+这是 etcd查看命令
+sudo etcdctl --endpoints https://127.0.0.1:2379 --cert-file=/etc/kubernetes/pki/etcd/server.crt --key-file=/etc/kubernetes/pki/etcd/server.key --ca-file=/etc/kubernetes/pki/etcd/ca.crt member list
+5bcec1d5b14a78aa: name=k8s-master peerURLs=https://192.168.1.234:2380 clientURLs=https://192.168.1.234:2379 isLeader=true
+
+
+这是etcd备份命令
+sudo ETCDCTL_API=3 etcdctl snapshot save "/home/etcd_bak/etcd-snapshot/$(date +%Y%m%d_%H%M%S)_snapshot.db" --endpoints=127.0.0.1:2379 --cert="/etc/kubernetes/pki/etcd/server.crt" --key="/etc/kubernetes/pki/etcd/server.key" --cacert="/etc/kubernetes/pki/etcd/ca.crt"
+
+这是etcd还原命令
+
+[root@k8s-master home]# ETCDCTL_API=3 etcdctl snapshot restore /home/supermap/k8s-backup/data/etcd-snapshot/20190822_143834_snapshot.db --data-dir=/var/lib/etcd
+2019-08-22 15:20:10.477871 I | mvcc: restore compact to 14777
+2019-08-22 15:20:10.482262 I | etcdserver/membership: added member 8e9e05c52164694d [http://localhost:2380] to cluster cdf818194e3a8c32
+
+
+
+备份的脚本。
+
+
+sudo ETCDCTL_API=3 etcdctl snapshot save "/home/etcd_bak/etcd-snapshot/$(date +%Y%m%d_%H%M%S)_snapshot.db" --endpoints=127.0.0.1:2379 --cert="/etc/kubernetes/pki/etcd/server.crt" --key="/etc/kubernetes/pki/etcd/server.key" --cacert="/etc/kubernetes/pki/etcd/ca.crt"
+
+
+逻辑文件备份：
+cp -r /etc/kubernetes/pki/etcd /home/etcd_bak/etcd_pki/$(date +%Y%m%d_%H%M%S)_etcd
+cp -r /var/lib/etcd /home/etcd_bak/etcd_lib/$(date +%Y%m%d_%H%M%S)_etcd
+
+
+find /home/supermap/k8s-backup/data/etcd-snapshot/*.db -ctime +60 -exec rm -r {} \;
+find /home/etcd_bak/etcd_lib/etcd.* -ctime +7 -exec rm -r {} \;
+
+
+
+
+etcd 创建 键值
+ETCDCTL_API=3
+sudo  etcdctl --endpoints https://127.0.0.1:2379 --cert-file=/etc/kubernetes/pki/etcd/server.crt --key-file=/etc/kubernetes/pki/etcd/server.key --ca-file=/etc/kubernetes/pki/etcd/ca.crt mk /testdir/testkey3 "for 20190823-1142"
+
+etcd 查看 键值
+ETCDCTL_API=3
+sudo etcdctl --endpoints https://127.0.0.1:2379 --cert-file=/etc/kubernetes/pki/etcd/server.crt --key-file=/etc/kubernetes/pki/etcd/server.key --ca-file=/etc/kubernetes/pki/etcd/ca.crt get /testdir/testkey
+
+https://www.cnblogs.com/breg/p/5756558.html  etcd命令
+
+
+
+PS： etcdctl 命令 ，执行前应该确定api 版本
+            数据执行时候，默认会用api 2，但是k8s 都是用 api 3
+     所以：sudo ETCDCTL_API=3 etcdctl
+     
+
+
+
+
+
+
+k8s事故总结：
+1、在km-1，ke-1强行断电，etcd文件损坏，所有数据丢失，重启后/var/lib/etcd顺坏
+   现象：1、api-server 启动失败，etcd启动失败
+         2、/var/lib/etcd 目录移除，重启正常
+         3、重启后发现，traefik/jenkins/gitlab/nexus/coreDNS 均消失，尤其kubelet基础的模块：coredns
+         4、措施：a、只能重装k8s环境，尤其DNS没有yaml文件，只能手动重新重装k8s
+                  b、gitlab需要gitlab官网镜像，拉取慢，恢复久
+
+测试方案一：
+    1、k8s测试环境建立 itzentao项目。
+        ETCDCTL_API=3
+      etcd写入数据： sudo etcdctl --endpoints https://127.0.0.1:2379 --cert-file=/etc/kubernetes/pki/etcd/server.crt --key-file=/etc/kubernetes/pki/etcd/server.key --ca-file=/etc/kubernetes/pki/etcd/ca.crt mk /testdir/testkey  "for 20190823-1142"
+      
+      ETCDCTL_API=3
+      etcd查看数据： sudo etcdctl --endpoints https://127.0.0.1:2379 --cert-file=/etc/kubernetes/pki/etcd/server.crt --key-file=/etc/kubernetes/pki/etcd/server.key --ca-file=/etc/kubernetes/pki/etcd/ca.crt get /testdir/testkey
+      
+      备份 etcd 物理文件：
+      cp -r /etc/kubernetes/pki/etcd /home/etcd_bak/etcd_pki/$(date +%Y%m%d_%H%M%S)_etcd
+      cp -r /var/lib/etcd /home/etcd_bak/etcd_lib/$(date +%Y%m%d_%H%M%S)_etcd
+      
+    3、vcenter断电虚拟机，k8s-master，k8s-node1
+       启动k8s-master，k8s-node1，手动 删除 /var/lib/etcd
+       
+       发现与k8s事故总结一样，k8s集群数据丢失。（dns、etcd、itzentao、kube-flannel、kube-proxy这些pod丢失）
+       
+        [root@k8s-master ~]# kubectl get pod --all-namespaces
+        NAMESPACE     NAME                                 READY   STATUS    RESTARTS   AGE
+        kube-system   etcd-k8s-master                      1/1     Running   8          64s
+        kube-system   kube-apiserver-k8s-master            1/1     Running   8          60s
+        kube-system   kube-controller-manager-k8s-master   1/1     Running   8          52s
+        kube-system   kube-scheduler-k8s-master            1/1     Running   8          64s
+        
+        
+        
+    恢复：
+        1、停止 k8s-master、kube-node1  docker & kubelet 服务。
+        2、还原 /etc/kubernetes/pki    /var/lib/etcd备份文件
+        3、启动 k8s-node1 docker  & kubelet 服务 
+           启动 k8s-mstser docker  & kubelet 服务 
+           重启 k8s-node1 kubelet 服务
+           重启 k8s-mstser kubelet 服务
+           
+    验证：1、kubectl get pod -o wide --all-namespaces  （pod已恢复）
+          2、查看 etcd 之前存储的键   （存在）
+          ETCDCTL_API=3
+        [root@k8s-master etcd_pki]# sudo etcdctl --endpoints https://127.0.0.1:2379 --cert-file=/etc/kubernetes/pki/etcd/server.crt --key-file=/etc/kubernetes/pki/etcd/server.key --ca-file=/etc/kubernetes/pki/etcd/ca.crt get /testdir/testkey
+        for 20190823-1142
+    
+    总结：
+               可以直接备份/etc/kubernetes/pki/etcd和/var/lib/etcd下的文件内容。
+                对于多节点的etcd服务，不能使用直接备份和恢复目录文件的方法。
+                备份之前先使用docker stop停止相应的服务，然后再启动即可，如果停止etcd服务，备份过程中服务会中断。
+                
+                因为etcd并不是源码部署，是kubeadm部署初始化时，自行启动的etcd pod，如果进入pod备份比较麻烦。
+                可以在k8s-master 安装etcd客户端（yum -y install etcd）
+
+测试方案二：
+
+    1、 etcd写入数据：
+    ETCDCTL_API=3
+    sudo ETCDCTL_API=3 etcdctl --endpoints https://127.0.0.1:2379 --cert-file=/etc/kubernetes/pki/etcd/server.crt --key-file=/etc/kubernetes/pki/etcd/server.key --ca-file=/etc/kubernetes/pki/etcd/ca.crt mk /testdir/testkey2  "for 20190823-1417"
+
+        
+    2、    逻辑备份 etcd文件：
+            sudo ETCDCTL_API=3 etcdctl snapshot save "/home/etcd_bak/etcd-snapshot/$(date +%Y%m%d_%H%M%S)_snapshot.db" --endpoints=127.0.0.1:2379 --cert="/etc/kubernetes/pki/etcd/server.crt" --key="/etc/kubernetes/pki/etcd/server.key" --cacert="/etc/kubernetes/pki/etcd/ca.crt"
+            
+    3、vcenter断电虚拟机，k8s-master，k8s-node1
+       启动k8s-master，k8s-node1，手动 删除 /var/lib/etcd
+        
+        etcd查看数据：
+        ETCDCTL_API=3
+        sudo etcdctl --endpoints https://127.0.0.1:2379 --cert-file=/etc/kubernetes/pki/etcd/server.crt --key-file=/etc/kubernetes/pki/etcd/server.key --ca-file=/etc/kubernetes/pki/etcd/ca.crt get /testdir/testkey
+        
+        etcd查看数据： 
+        ETCDCTL_API=3
+        sudo etcdctl --endpoints https://127.0.0.1:2379 --cert-file=/etc/kubernetes/pki/etcd/server.crt --key-file=/etc/kubernetes/pki/etcd/server.key --ca-file=/etc/kubernetes/pki/etcd/ca.crt get /testdir/testkey2
+   
+        数据均不存在，
+        
+        [root@k8s-master ~]# kubectl get pod --all-namespaces   （pod也丢失 ）
+            NAMESPACE     NAME                                 READY   STATUS    RESTARTS   AGE
+            kube-system   etcd-k8s-master                      1/1     Running   12         117s
+            kube-system   kube-apiserver-k8s-master            1/1     Running   11         119s
+            kube-system   kube-controller-manager-k8s-master   1/1     Running   13         117s
+            kube-system   kube-scheduler-k8s-master            1/1     Running   13         119s
+
+    4、恢复：
+        1、停止 k8s-master、kube-node1  docker & kubelet 服务。
+        2、k8s-master执行：[root@k8s-master ~]# rm -rf /var/lib/etcd/
+           k8smaster执行：       
+            [root@k8s-master ~]# ETCDCTL_API=3 etcdctl snapshot restore /home/etcd_bak/etcd-snapshot/20190823_144049_snapshot.db --data-dir=/var/lib/etcd
+            2019-08-23 14:52:17.973115 I | mvcc: restore compact to 148763
+            2019-08-23 14:52:17.978261 I | etcdserver/membership: added member 8e9e05c52164694d [http://localhost:2380] to cluster cdf818194e3a8c32
+            
+            [root@k8s-master ~]# ll /var/lib/etcd/  （etcd db文件已恢复到 /var/lib/etcd）
+            total 0
+            drwx------. 4 root root 29 Aug 23 14:52 member
+        3、启动 k8s-node1 docker  & kubelet 服务 
+           启动 k8s-mstser docker  & kubelet 服务 
+           重启 k8s-node1 kubelet 服务
+           重启 k8s-mstser kubelet 服务  
+
+    验证：  
+        kubectl get pod --all-namespaces   （pod存在）
+
+        etcd查看数据： sudo etcdctl --endpoints https://127.0.0.1:2379 --cert-file=/etc/kubernetes/pki/etcd/server.crt --key-file=/etc/kubernetes/pki/etcd/server.key --ca-file=/etc/kubernetes/pki/etcd/ca.crt get /testdir/testkey2
+        
+            并未发现存在的键，etcd恢复失败，正在找寻原因。
+            
+            
+            
+
+
+
+
+
+        
+备份脚本：
+
+#mount -t nfs 192.168.1.239:/share /data 
+
+#(每个备份130M，每小时一份，一天3G左右，使用 sd-1 作为备份存储)
+
+       
+#!/bin/bash
+
+bak_path=$(date +%Y%m%d_%H%M)
+mkdir -p /data/k8s-master/etcd_bak/$bak_path
+
+#物理备份
+cp -r /etc/kubernetes/pki/etcd /data/k8s-master/etcd_bak/$bak_path/pki_etcd
+cp -r /var/lib/etcd /data/k8s-master/etcd_bak/$bak_path/lib_etcd
+
+#逻辑备份
+sudo ETCDCTL_API=3 etcdctl snapshot save "/data/k8s-master/etcd_bak/$bak_path/snapshot.db" --endpoints=127.0.0.1:2379 --cert="/etc/kubernetes/pki/etcd/server.crt" --key="/etc/kubernetes/pki/etcd/server.key" --cacert="/etc/kubernetes/pki/etcd/ca.crt"
+
+#删除备份
+find /data/k8s-master/etcd_bak/ -ctime +30 -exec rm -r {} \;
+
+
+#crontab ： * */1 * * * sh /opt/etcd_bak.sh
+
+

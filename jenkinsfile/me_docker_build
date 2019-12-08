@@ -1,0 +1,92 @@
+#!groovy
+pipeline {
+  agent {node("compile-1-192.168.100.138")}
+  environment{
+	PATH="/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/root/jdk1.8/bin"
+	HARBOR_IP="192.168.100.139"
+	// 或者使用BUILD_TAG，每一次构建也是唯一的
+	def IMAGE_TAG = sh(returnStdout: true, script: 'date +%Y%m%d_%H%M%S')
+  }
+
+stages{
+    stage("checkout"){
+		steps{
+		    script{
+			    dir('env'){
+			    	echo "1.Clone Stage"
+			    	cleanWs()
+			    	git credentialsId: 'c263662e-1975-4606-b05f-b1cd4a2528d1', url: 'http://192.168.100.135/root/java.git'
+			    }
+			}
+		}
+    }
+	
+	
+    stage("build maven"){
+		steps{
+			echo "2.Build War Packege Stage"
+			script{
+				def mvnhome = '/usr/local/apache-maven'
+				dir('env'){
+					sh "$mvnhome/bin/mvn -Dmaven.test.skip=true clean install"
+				}
+			}
+        }
+    }
+	
+     stage("build dockerfile"){
+        steps{
+			dir('env/target'){
+				echo "3.Build Docker Image Stage"
+				sh "bash /data/scripts/myapp_build.sh ${HARBOR_IP} ${BUILD_TAG}"
+			}
+        }
+    }
+    
+    stage("push image to harbor"){
+        steps{
+            dir('env/target'){
+				echo "3.Push Docker Image Stage"
+			    withCredentials([usernamePassword(credentialsId: '5a6526f6-1273-4560-bee7-c4d6a340976d', passwordVariable: 'HARBOR_PASS', usernameVariable: 'HARBOR_USER')]) {
+					sh """
+				    docker login ${HARBOR_IP} -u ${HARBOR_USER} -p ${HARBOR_PASS}
+				    docker push ${HARBOR_IP}/myapp/myapp:${BUILD_TAG}
+				    """
+				}
+			}
+        }
+    }
+     
+    stage("clean environment"){
+        steps{
+			dir('env'){
+			sh """
+			echo ".."
+			"""
+			}
+        }
+    }
+ }
+ }
+
+
+
+
+#################################
+
+[root@compile scripts]# cat myapp_build.sh 
+#!/bin/bash
+#
+HARBOR_IP=$1
+BUILD_TAG=$2
+
+echo "FROM ${HARBOR_IP}/java/tomcat:latest" >Dockerfile
+echo "ENV TZ=Asia/Shanghai" >>Dockerfile
+echo "RUN rm -rf  /usr/local/tomcat/webapps/ROOT/*">>Dockerfile
+echo "COPY myDemo.war /usr/local/tomcat/webapps/ROOT">>Dockerfile
+echo "RUN cd /usr/local/tomcat/webapps/ROOT/ && jar xf myDemo.war && rm -f myDemo.war">>Dockerfile
+echo "EXPOSE 8080">>Dockerfile
+# MYAPP_BUILD_NAME=$(echo "$HARBOR_IP/myapp/myapp-$(date +%Y%m%d_%H%M%S)")
+# echo ${MYAPP_BUILD_NAME}>MYAPP_BUILD_NAME
+docker build -t ${HARBOR_IP}/myapp/myapp:${BUILD_TAG} .
+

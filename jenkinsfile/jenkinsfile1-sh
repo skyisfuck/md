@@ -1,0 +1,57 @@
+set -e
+
+Time=`date +%Y%m%d%H%M%S`
+WorkDir=`pwd`
+
+if [[ ${Scope} == "测试环境" ]]; then
+  Branch="release"
+  ScopeName="test"
+fi
+if [[ ${Scope} == "预发环境" ]]; then
+  Branch="master"
+  ScopeName="pre"
+fi
+if [[ ${Scope} == "生产环境" ]]; then
+  Branch="master"
+  ScopeName="pro"
+fi
+
+cat > Dockerfile <<EOF
+FROM registry-vpc.cn-beijing.aliyuncs.com/vcgcs/flask
+WORKDIR /usr/src/app
+ADD . .
+CMD python manager.py
+EOF
+
+cat > manager.py <<EOF
+from flask import Flask
+from flask import request
+import os
+
+app = Flask(__name__)
+
+@app.route('/',methods=["GET"])
+def cicd_test():
+    if request.method == 'GET':
+        test = os.popen("/usr/src/app/kubectl --kubeconfig /usr/src/app/test-config get deployment cicd-test -o yaml |grep image |grep aliyuncs |awk -F '- image:' '{print \$2}'").read()
+        pre = os.popen("/usr/src/app/kubectl --kubeconfig /usr/src/app/pre-config get deployment cicd-test -o yaml |grep image |grep aliyuncs |awk -F '- image:' '{print \$2}'").read()
+        pro = os.popen("/usr/src/app/kubectl --kubeconfig /usr/src/app/pro-config get deployment cicd-test -o yaml |grep image |grep aliyuncs |awk -F '- image:' '{print \$2}'").read()
+        return "test环境的镜像地址: %s ,pre环境的镜像地址: %s , pro环境的镜像地址: %s"  % (test,pre,pro)
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0',port='5001',debug=True)
+EOF
+
+docker build -t registry-vpc.cn-beijing.aliyuncs.com/vcg/cicd-test:${ScopeName}-$Time .
+docker push registry-vpc.cn-beijing.aliyuncs.com/vcg/cicd-test:${ScopeName}-$Time
+docker rmi -f registry-vpc.cn-beijing.aliyuncs.com/vcg/cicd-test:${ScopeName}-$Time
+
+if [[ ${Scope} == "测试环境" ]]; then
+  su - cicd-test -c "kubectl set image deployment cicd-test cicd-test=registry-vpc.cn-beijing.aliyuncs.com/vcg/cicd-test:${ScopeName}-$Time"
+fi
+if [[ ${Scope} == "预发环境" ]]; then
+  su - cicd-pre -c "kubectl set image deployment cicd-test cicd-test=registry-vpc.cn-beijing.aliyuncs.com/vcg/cicd-test:${ScopeName}-$Time"
+fi
+if [[ ${Scope} == "生产环境" ]]; then
+  su - cicd-pro -c "kubectl set image deployment cicd-test cicd-test=registry-vpc.cn-beijing.aliyuncs.com/vcg/cicd-test:${ScopeName}-$Time"
+fi

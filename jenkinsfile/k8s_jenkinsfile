@@ -1,0 +1,25 @@
+def label = "mypod-${UUID.randomUUID().toString()}"
+podTemplate(label: label, cloud: 'kubernetes', 
+    containers: [
+        containerTemplate(name: 'maven', image: 'maven:3.3.9-jdk-8-alpine', ttyEnabled: true, command: 'cat'),
+        containerTemplate(name: 'docker', image: 'docker:stable', ttyEnabled: true, command: 'cat')
+    ],
+    volumes: [
+            hostPathVolume(hostPath: '/var/run/docker.sock', mountPath: '/var/run/docker.sock'),
+            // persistentVolumeClaim(clainName: 'jenkins-slave-gfs', mountPAth: '/home/jenkins', readOnly: false)
+        ],
+    ) {
+
+    node(label) {
+        def registryAddr = 'registry.k8s.io'
+        stage('build image') {
+            checkout([$class: 'SubversionSCM', additionalCredentials: [], excludedCommitMessages: '', excludedRegions: '', excludedRevprop: '', excludedUsers: '', filterChangelog: false, ignoreDirPropChanges: false, includedRegions: '', locations: [[cancelProcessOnExternalsFail: true, credentialsId: '7dd36403-f190-48bf-ac43-e082f6b37709', depthOption: 'infinity', ignoreExternalsOption: true, local: '.', remote: 'https://192.168.0.252:8443/svn/k8s/dev/dysjds']], quietOperation: true, workspaceUpdater: [$class: 'UpdateUpdater']])
+            container('docker') {
+                        sh "docker build -t ${registryAddr}/k8sdysjds:1 ."
+                }
+            container('docker') {
+                        sh "docker push ${registryAddr}/k8sdysjds:1 "
+                }            
+        }
+    }
+}

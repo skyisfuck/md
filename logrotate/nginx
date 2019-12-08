@@ -1,0 +1,14 @@
+/usr/local/nginx/logs/access.log  
+{
+    daily
+    rotate 30
+    missingok
+    dateext
+    compress
+    delaycompress
+    notifempty
+    sharedscripts
+    postrotate
+    [ -e /usr/local/nginx/logs/nginx.pid ] && kill -USR1 `cat /usr/local/nginx/logs/nginx.pid`
+    endscript
+}

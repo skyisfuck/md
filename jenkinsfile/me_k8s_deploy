@@ -1,0 +1,163 @@
+#!groovy
+pipeline {
+  agent {node("compile-1-192.168.100.138")}
+  environment{
+  PATH="/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/root/jdk1.8/bin"
+}
+parameters{
+	choice(
+		name: 'Action',choices: '程序发版\n程序回滚',
+		description: '请选择操作'
+	)
+	choice(
+		choices:'test\nprod',
+		description:'choose deploy environment',
+		name:'deploy_env'
+	)
+	string(name: 'dockerImageName',defaultValue: '1',description:'请确认docker image name是harbor上的绝对地址')
+	string(name: 'JenkinsApi', defaultValue: 'false', description: '是否是JenkinsAPI触发')
+	
+}
+ 
+stages{
+    stage('checkout') {
+	    steps {
+	    	script {
+		    	dir('env'){
+		    		cleanWs()
+		    		if ("${dockerImageName}" == "flag") {
+			            sh 'echo "ERROR: please input docker image name" && exit 1'
+		        	}
+		    	}
+		    }
+        }
+    }
+    stage('Deploy') {
+		steps {
+			script {
+				if ("${deploy_env}" == "test") {
+					if ("${env.Action}" == "程序回滚") {
+						sh "kubectl rollout undo deploy myapp -n ${deploy_env}"
+					}
+					else {
+						sh "bash /data/scripts/myapp_deploy.sh ${deploy_env} ${dockerImageName}"
+					}
+				}
+				if ("${deploy_env}" == "prod") {
+					script {
+						if ("${JenkinsApi}" == "true") {
+							sh "bash /data/scripts/myapp_deploy.sh ${deploy_env} ${dockerImageName}"
+						}
+						else {
+							script {
+								if ("${env.Action}" == "程序回滚") {
+									echo "生产环境回滚,等待领导确认"
+									script {
+										input message: "请确认是否回滚 ${deploy_env}： ",ok : '确认',submitter: "admin"
+									}
+									echo '已确认，即将回滚'
+									sh "kubectl rollout undo deploy myapp -n ${deploy_env}"
+								}
+								else {
+									echo "生产环境发版,等待领导确认"
+									script {
+										input message: "请确认是否部署 ${deploy_env}： ",ok : '确认',submitter: "admin"
+									}
+									echo '已确认，即将发布'
+									sh "bash /data/scripts/myapp_deploy.sh ${deploy_env} ${dockerImageName}"
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+    }
+}
+}
+
+
+
+
+##############################################
+[root@compile myapp]# cat myapp.yaml 
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: myapp
+  name: myapp
+  namespace: default
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: myapp
+  template:
+    metadata:
+      labels:
+        app: myapp
+    spec:
+      containers:
+      - image: 192.168.100.139/myapp/myapp:jenkins-myapp_build-49
+        name: myapp
+        ports:
+        - containerPort: 8080
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: myapp
+  namespace: default
+spec:
+  selector:
+    app: myapp
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080
+
+---
+apiVersion: networking.k8s.io/v1beta1
+kind: Ingress
+metadata:
+  name: myapp-ingress
+  namespace: default
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  rules:
+  - host: myapp.test.com
+    http:
+      paths:
+      - path: /
+        backend:
+          serviceName: myapp
+          servicePort: 80
+          
+          
+########################################
+[root@compile scripts]# cat myapp_deploy.sh 
+#!/bin/bash
+#
+deploy_env=$1
+dockerImagerName=$2
+
+cp /data/k8s-yaml/myapp/myapp.yaml .
+sed -i "s@image:.*@image: ${dockerImageName}@" myapp.yaml
+sed -i "s@namespace:.*@namespace: ${deploy_env}@" myapp.yaml
+sed -i "s@host:.*@host: myapp.${deploy_env}.com@" myapp.yaml
+kubectl apply -f myapp.yaml

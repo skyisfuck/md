@@ -1,0 +1,67 @@
+setenforce 0
+sed -i 's#SELINUX=enforcing#SELINUX=disabled#' /etc/selinux/config
+
+# add timezone
+[root@zabbix_agent conf.d]# grep "Asia" /etc/httpd/conf.d/zabbix.conf 
+        php_value date.timezone Asia/Shanghai
+
+
+# Configure httpd
+echo -e '\nServerTokens Prod' >> /etc/httpd/conf/httpd.conf
+echo 'KeepAlive On' >> /etc/httpd/conf/httpd.conf
+sed -i '151 s#AllowOverride.*#AllowOverride All#' /etc/httpd/conf/httpd.conf
+sed -i '164 s#DirectoryIndex.*#DirectoryIndex index.html index.cgi index.php#' /etc/httpd/conf/httpd.conf
+
+systemctl start httpd
+systemctl enable httpd
+
+# configure mariadb
+echo -e "\n[mysqld]\ncharacter-set-server=utf8" >> /etc/my.cnf 
+
+
+
+systemctl enable mariadb
+systemctl start mariadb
+mysql_secure_installation 
+CREATE DATABASE zabbix character set utf8 collate utf8_bin;
+GRANT all ON zabbix.* TO 'zabbix'@'%' IDENTIFIED BY 'redhat';
+flush privileges;
+
+
+
+# configure zabbix
+DBPassword=redhat
+Timeout=30
+
+# configure firewalld 
+firewall-cmd --add-service={http,https} --permanent 
+firewall-cmd --add-service=mysql --permanent
+firewall-cmd --add-port={10051/tcp,10050/tcp} --permanent 
+firewall-cmd --reload 
+
+
+
+# zabbix-agent##########
+systemctl enable zabbix-agentx
+systemctl start zabbix-agent
+
+
+/etc/zabbix/zabbix_agent.conf
+sed -i '/^Hostname/s/^/# /' /etc/zabbix/zabbix_agentd.conf
+
+
+# 配置zabbix agent
+cp /etc/zabbix/zabbix_agentd.conf{,.bak}
+sed -i "s/Server=.*/Server=$ZabbixServer/" /etc/zabbix/zabbix_agentd.conf
+sed -i "s/ServerActive=.*/ServerActive=$ZabbixServer/" /etc/zabbix/zabbix_agentd.conf
+sed -i "s/# UnsafeUserParameters=.*/UnsafeUserParameters=1/" /etc/zabbix/zabbix_agentd.conf
+sed -i "s/# HostMetadataItem=.*/HostMetadataItem=system.uname/" /etc/zabbix/zabbix_agentd.conf
+sed -i "s/# HostMetadata=.*/HostMetadata=LinuxServer/" /etc/zabbix/zabbix_agentd.conf 
+sed -i "s/# EnableRemoteCommands=.*/EnableRemoteCommands=1/" /etc/zabbix/zabbix_agentd.conf 
+sed -i "s/# LogRemoteCommands=.*/LogRemoteCommands=1/" /etc/zabbix/zabbix_agentd.conf 
+sed -i "s/# Timeout=.*/Timeout=30/" /etc/zabbix/zabbix_agentd.conf 
+
+mkdir -p /etc/zabbix/scripts &&  wget -O /etc/zabbix/scripts/linux_hwinfo.sh 
+firewall-cmd --add-port=10050/tcp --permanent 
+
+

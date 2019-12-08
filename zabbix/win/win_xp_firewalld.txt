@@ -1,0 +1,2 @@
+# xp firewall configure
+netsh firewall add protopening TCP 10050 "zabbix-agent"  

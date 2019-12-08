@@ -1,0 +1,77 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: jenkins-headless
+  labels:
+    app: jenkins-headless
+spec:
+  ports:
+  - port: 8080
+    name: web
+  - port: 50000
+    name: agent
+  clusterIP: None
+  selector:
+    app: jenkins
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: jenkins
+spec:
+  serviceName: jenkins
+  replicas: 1
+  selector:
+    matchLabels:
+      app: jenkins
+  template:
+    metadata:
+      labels:
+        app: jenkins
+    spec:
+      serviceAccountName: jenkins
+      containers:
+      - name: jenkins
+        imagePullPolicy: IfNotPresent
+        image: jenkins/jenkins:lts
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "800m"
+        env:
+          - name: TZ
+            value: Asia/Shanghai
+        ports:
+        - containerPort: 8080
+          name: web
+        - containerPort: 50000
+          name: agent
+        readinessProbe:
+          httpGet:
+            path: /login
+            port: 8080
+          initialDelaySeconds: 300
+          timeoutSeconds: 5
+          failureThreshold: 12
+        livenessProbe:
+          httpGet:
+            path: /login
+            port: 8080
+          initialDelaySeconds: 300
+          timeoutSeconds: 5
+          failureThreshold: 12
+        volumeMounts:
+        - name: datadir
+          mountPath: /var/jenkins_home
+      securityContext:
+        runAsUser: 1000
+        fsGroup: 1000
+  volumeClaimTemplates:
+  - metadata:
+      name: datadir
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      storageClassName: slow
+      resources:
+        requests:
+          storage: 5Gi

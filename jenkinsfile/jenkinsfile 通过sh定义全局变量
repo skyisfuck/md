@@ -1,0 +1,38 @@
+pipeline {
+    agent any
+    environment {
+        date = sh (script: "date", returnStdout: true)  //通过sh定义全局变量
+    }
+    stages {
+        stage('参数检查') {
+            steps {
+                echo "下面是测试信息"
+                echo "${date}"
+                sh "sleep 2"
+                script {
+                    date = sh (script: "date", returnStdout: true)     //通过sh修改全局变量
+                    echo "2下面是测试信息"
+                    echo "${date}"
+                }
+                echo "3下面是测试信息"
+                echo "${date}===="
+            }
+        }        
+        stage('Build') {
+            steps {
+                echo 'Building'
+                echo "${date}"
+             }
+        }
+        stage('Test') {
+            steps {
+                echo 'Testing'
+            }
+        }
+        stage('Deploy') {
+            steps {
+                echo 'Deploying'
+            }
+        }
+    }
+}

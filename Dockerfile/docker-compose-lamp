@@ -1,0 +1,25 @@
+version: "3"
+services:
+  php-apache:
+    image: php-apache:latest
+    ports:
+      - "80:80"
+    networks:
+      - lamp
+    depends_on:
+      - mysql
+
+  mysql:
+    image: mysql:5.6
+    ports:
+      - "3306:3306"
+    volumes:
+      - /data/mysql:/var/lib/mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=aaa
+      - TZ='Asia/Shanghai'
+    networks:
+      - lamp
+
+networks:
+  lamp:
